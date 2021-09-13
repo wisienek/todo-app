@@ -3,15 +3,15 @@ const { GraphQLSchema, GraphQLList, GraphQLObjectType, GraphQLInt, GraphQLString
 
 const TodoType = require('./TypeDefs/TodoType');
 
-const TodosData = require('./data.json');
+const prisma = require('../prisma/client');
 
 const rootQuery = new GraphQLObjectType({
     name: "RootQueryType",
     fields: {
         getAllTodos: {
             type: new GraphQLList(TodoType),
-            resolve(parent, args) {
-                return TodosData;
+            async resolve(parent, args) {
+                return await prisma.todo.findMany();
             }
         },
         getTodo: {
@@ -21,11 +21,14 @@ const rootQuery = new GraphQLObjectType({
                 message: { type: GraphQLString },
                 finished: { type: GraphQLBoolean }
             },
-            resolve(parent, args) {
-                return TodosData.filter(todo=> todo.finished == args.finished);
+            async resolve(parent, args) {
+                return await prisma.todo.findFirst({ 
+                    where: {
+                        id: args.id
+                    }
+                });
             }
         }
-
     }
 });
 const mutation = new GraphQLObjectType({
@@ -37,10 +40,56 @@ const mutation = new GraphQLObjectType({
                 message: { type: GraphQLString },
                 finished: { type: GraphQLBoolean }
             },
-            resolve(parent, args) {
-                let newTodo = { ...args, id: TodosData.length+1 };
-                TodosData.push(newTodo);
+            async resolve(parent, args) {
+                const newTodo = await prisma.todo.create({ data: {...args} });
+
+                console.log(`New todo: `, newTodo);
+
                 return newTodo;
+            }
+        },
+        editTodoState: {
+            type: TodoType,
+            args: {
+                id: { type: GraphQLInt },
+                finished: { type: GraphQLBoolean }
+            },
+            async resolve(parent, args) {
+                const searchedTodo = await prisma.todo.findFirst({ where: { id: args.id }});
+                if( searchedTodo ) {
+                    searchedTodo.finished = args.finished;
+
+                    const update = await prisma.todo.update({
+                        where: {
+                            id: args.id
+                        },
+                        data: {
+                            finished: searchedTodo.finished
+                        }
+                    });
+                    console.log(`update: `, update);
+
+                    return searchedTodo;
+                }
+
+                return;
+            }
+        },
+        removeTodo: {
+            type: new GraphQLList(TodoType),
+            args: {
+                id: { type: GraphQLInt },
+            },
+            async resolve(parent, args) {
+                const deletedTodo = await prisma.todo.delete({
+                    where: {
+                        id: args.id
+                    }
+                });
+
+                console.log(`Deleted: `, deletedTodo);
+
+                return await prisma.todo.findMany();
             }
         }
     }
